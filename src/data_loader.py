@@ -4,11 +4,12 @@ import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
 class DataLoader:
-    def __init__(self, base_path="./datasets", image_size=(256, 256), batch_size=32, test_ratio=0.2, seed=42):
+    def __init__(self, base_path="./../datasets", image_size=(256, 256), batch_size=32, test_ratio=0.2, validation_ratio=0.2, seed=42):
         self.base_path = base_path
         self.image_size = image_size
         self.batch_size = batch_size
         self.test_ratio = test_ratio
+        self.validation_ratio = validation_ratio
         self.seed = seed
         self.valid_ext = (".jpg", ".jpeg", ".png", ".bmp")
 
@@ -36,7 +37,7 @@ class DataLoader:
 
         return self._create_tf_datasets(df)
 
-    def load_multiclass_dataset(self, class_folders):
+    def load_multiclass_dataset(self, class_folders, class_weights: bool= True):
         """Crée un dataset multi-classes équilibré à partir d'une liste de dossiers"""
         dfs = []
         min_count = float('inf')
@@ -49,13 +50,15 @@ class DataLoader:
                 min_count = len(df)
 
         # Équilibrage
-        balanced_dfs = [df.sample(min_count, random_state=self.seed) for df in dfs]
-        df = pd.concat(balanced_dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+        if class_weights is False:
+            balanced_dfs = [df.sample(min_count, random_state=self.seed) for df in dfs]
+            df = pd.concat(balanced_dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
 
         return self._create_tf_datasets(df)
 
     def _create_tf_datasets(self, df):
-        train_df, val_df = train_test_split(df, test_size=self.test_ratio, stratify=df["label"], random_state=self.seed)
+        train_val_df, test_df = train_test_split(df, test_size=self.test_ratio, stratify=df["label"], random_state=self.seed)
+        train_df, val_df = train_test_split(train_val_df, test_size=self.validation_ratio, stratify=train_val_df["label"], random_state=self.seed)
 
         def df_to_dataset(df):
             path_ds = tf.data.Dataset.from_tensor_slices(df["path"].values)
@@ -71,4 +74,4 @@ class DataLoader:
             img_ds = path_ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
             return tf.data.Dataset.zip((img_ds, label_ds)).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
 
-        return df_to_dataset(train_df), df_to_dataset(val_df)
+        return df_to_dataset(train_df), df_to_dataset(val_df), df_to_dataset(test_df)
