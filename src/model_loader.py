@@ -54,6 +54,7 @@ class ModelLoader:
         except ModuleNotFoundError:
             raise ModuleNotFoundError()
 
+        output_activation = 'sigmoid' if num_classes == 1 else 'softmax'
         base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(256, 256, 3))
         base_model.trainable = False
 
@@ -61,7 +62,7 @@ class ModelLoader:
             base_model,
             get_data_augmentation(image_h=256, image_w=256),
             tf.keras.layers.GlobalAveragePooling2D(),
-            tf.keras.layers.Dense(num_classes, activation='sigmoid'),
+            tf.keras.layers.Dense(num_classes, activation=output_activation),
         ])
         if show_summary:
             model.summary()
@@ -76,11 +77,12 @@ class ModelLoader:
         return model
 
     def create_model_CNN_simple(self, show_summary: bool = True, init_weigths_path: str = None, num_classes: int = 1):
+        output_activation = 'sigmoid' if num_classes == 1 else 'softmax'
         model = tf.keras.Sequential([
             tf.keras.layers.Flatten(input_shape=(256, 256, 3)),
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dropout(0.4),
-            tf.keras.layers.Dense(num_classes, activation='sigmoid')
+            tf.keras.layers.Dense(num_classes, activation=output_activation)
         ])
         if show_summary:
             model.summary()
@@ -94,6 +96,7 @@ class ModelLoader:
         return model
 
     def create_model_CNN_hard(self, show_summary: bool = True, init_weigths_path: str = None, num_classes: int = 1):
+        output_activation = 'sigmoid' if num_classes == 1 else 'softmax'
         model = tf.keras.Sequential([
             get_data_augmentation(image_h=256, image_w=256),
             tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 3)),
@@ -111,7 +114,7 @@ class ModelLoader:
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dropout(0.5),
-            tf.keras.layers.Dense(num_classes, activation='sigmoid')  # Classification binaire
+            tf.keras.layers.Dense(num_classes, activation=output_activation)  # Classification binaire
         ])
         if show_summary:
             model.summary()
