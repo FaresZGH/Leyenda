@@ -78,6 +78,8 @@ class ModelLoader:
             base_model,
             get_data_augmentation(),
             tf.keras.layers.GlobalAveragePooling2D(),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dropout(0.5),
             tf.keras.layers.Dense(num_classes, activation=output_activation),
         ])
         if show_summary:
