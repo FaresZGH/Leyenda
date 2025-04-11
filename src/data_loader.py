@@ -30,7 +30,7 @@ class DataLoader:
         df_pos = self.create_dataframe_for_class(positive_class, label=1)
         dfs_neg = [self.create_dataframe_for_class(cls, label=0) for cls in negative_classes]
         df_neg = pd.concat(dfs_neg, ignore_index=True)
-
+        
         # Équilibrage des classes
         if class_weights is False:
             n = min(len(df_pos), len(df_neg))
@@ -39,6 +39,8 @@ class DataLoader:
             df = pd.concat([df_pos, df_neg]).sample(frac=1, random_state=self.seed).reset_index(drop=True)
         else:
             df = pd.concat([df_pos, df_neg]).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+
+        print(f"Binary Dataset size: {len(df)}")
 
         return self._create_tf_datasets(df)
 
@@ -62,6 +64,8 @@ class DataLoader:
             dfs = [df_.sample(frac=1, random_state=self.seed) for df_ in dfs]
             dfs = pd.concat(dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
 
+        print(f"Multiclass Dataset size: {len(dfs)}")
+        
         return self._create_tf_datasets(dfs)
 
     def _create_tf_datasets(self, df):
