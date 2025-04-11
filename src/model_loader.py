@@ -11,12 +11,12 @@ class ModelLoader:
         if model_weights_path is not None:
             self.model_weights_path: str = model_weights_path
         else:
-            self.model_weights_path: str = f"./../models/weights/{model_name}/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}_.weights.h5"
+            self.model_weights_path: str = f"./../models/weights/{model_name}/"
 
         if model_logs_path is not None:
             self.model_logs_path: str = model_logs_path
         else:
-            self.model_logs_path: str = f"./../logs/fit/{model_name}" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            self.model_logs_path: str = f"./../logs/fit/{model_name}"
 
     def get_early_stopping(self, patience: int =4, restore_best_weights: bool =False, value_to_monitor: str = "val_loss"):
         try:
@@ -39,7 +39,7 @@ class ModelLoader:
             raise ImportError()
 
         return tf.keras.callbacks.ModelCheckpoint(
-            self.model_weights_path,
+            self.model_weights_path + f"{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.weights.h5",
             monitor="val_loss",
             verbose=0,
             save_best_only=True,
@@ -53,7 +53,7 @@ class ModelLoader:
             log_dir = self.model_logs_path
 
         tensorboard_callback = tf.keras.callbacks.TensorBoard(
-            log_dir=log_dir,
+            log_dir=log_dir + f"{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}",
             histogram_freq=1,
             write_graph=True,
             write_images=True,
