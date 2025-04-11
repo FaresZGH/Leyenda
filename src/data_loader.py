@@ -2,6 +2,9 @@ import os
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
+from PIL import Image
+from tensorboard.compat.tensorflow_stub.errors import InvalidArgumentError
+
 
 class DataLoader:
     def __init__(self, base_path="./../datasets", image_size=(256, 256), batch_size=32, test_ratio=0.2, validation_ratio=0.2, seed=42):
@@ -21,23 +24,37 @@ class DataLoader:
         folder = os.path.join(self.base_path, folder_name)
         files = [f for f in os.listdir(folder) if f.lower().endswith(self.valid_ext)]
         paths = [os.path.join(folder, f) for f in files]
-        return pd.DataFrame({"path": paths, "label": label})
+        # Vérifie la validité des images
+        def is_valid_image(path):
+            try:
+                img_bytes = tf.io.read_file(path)
+                decoded_img = tf.io.decode_image(img_bytes)
+                return True
+            except tf.errors.InvalidArgumentError as e:
+                print(f"Found bad path {path}...{e}")
+                return False
 
-    def load_binary_dataset(self, positive_class, negative_classes):
+        valid_paths = [p for p in paths if is_valid_image(p)]
+        return pd.DataFrame({"path": valid_paths, "label": label})
+
+    def load_binary_dataset(self, positive_class, negative_classes, class_weights: bool=False):
         """Crée un dataset binaire équilibré (1 vs 0)"""
         df_pos = self.create_dataframe_for_class(positive_class, label=1)
         dfs_neg = [self.create_dataframe_for_class(cls, label=0) for cls in negative_classes]
         df_neg = pd.concat(dfs_neg, ignore_index=True)
 
         # Équilibrage des classes
-        n = min(len(df_pos), len(df_neg))
-        df_pos = df_pos.sample(n, random_state=self.seed)
-        df_neg = df_neg.sample(n, random_state=self.seed)
-        df = pd.concat([df_pos, df_neg]).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+        if class_weights is False:
+            n = min(len(df_pos), len(df_neg))
+            df_pos = df_pos.sample(n, random_state=self.seed)
+            df_neg = df_neg.sample(n, random_state=self.seed)
+            df = pd.concat([df_pos, df_neg]).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+        else:
+            df = pd.concat([df_pos, df_neg]).sample(frac=1, random_state=self.seed).reset_index(drop=True)
 
         return self._create_tf_datasets(df)
 
-    def load_multiclass_dataset(self, class_folders, class_weights: bool= True):
+    def load_multiclass_dataset(self, class_folders, class_weights: bool= False):
         """Crée un dataset multi-classes équilibré à partir d'une liste de dossiers"""
         dfs = []
         min_count = float('inf')
@@ -51,10 +68,13 @@ class DataLoader:
 
         # Équilibrage
         if class_weights is False:
-            balanced_dfs = [df.sample(min_count, random_state=self.seed) for df in dfs]
-            df = pd.concat(balanced_dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+            balanced_dfs = [df_.sample(min_count, random_state=self.seed) for df_ in dfs]
+            dfs = pd.concat(balanced_dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
+        else:
+            dfs = [df_.sample(frac=1, random_state=self.seed) for df_ in dfs]
+            dfs = pd.concat(dfs).sample(frac=1, random_state=self.seed).reset_index(drop=True)
 
-        return self._create_tf_datasets(df)
+        return self._create_tf_datasets(dfs)
 
     def _create_tf_datasets(self, df):
         train_val_df, test_df = train_test_split(df, test_size=self.test_ratio, stratify=df["label"], random_state=self.seed)

@@ -11,14 +11,14 @@ class ModelLoader:
         if model_weights_path is not None:
             self.model_weights_path: str = model_weights_path
         else:
-            self.model_weights_path: str = f"./../models/weights/{model_name}.weights.h5"
+            self.model_weights_path: str = f"./../models/weights/{model_name}/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}_.h5"
 
         if model_logs_path is not None:
             self.model_logs_path: str = model_logs_path
         else:
             self.model_logs_path: str = f"./../logs/fit/{model_name}" + datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    def get_early_stopping(self, patience: int =5, restore_best_weights: bool =True, value_to_monitor: str = "val_loss"):
+    def get_early_stopping(self, patience: int =4, restore_best_weights: bool =False, value_to_monitor: str = "val_loss"):
         try:
             from tensorflow.python.keras.callbacks import EarlyStopping
         except ImportError:
@@ -31,6 +31,23 @@ class ModelLoader:
         )
 
         return early_stop
+
+    def get_model_checkpoint(self):
+        try:
+            import tensorflow as tf
+        except ImportError:
+            raise ImportError()
+
+        return tf.keras.callbacks.ModelCheckpoint(
+            self.model_weights_path,
+            monitor="val_loss",
+            verbose=0,
+            save_best_only=True,
+            save_weights_only=True,
+            mode="auto",
+            save_freq="epoch",
+            initial_value_threshold=None,
+        )
 
     def get_tensorboard_callback(self, log_dir: str = None):
         if log_dir is None:
@@ -60,7 +77,7 @@ class ModelLoader:
 
         model = tf.keras.Sequential([
             base_model,
-            get_data_augmentation(image_h=256, image_w=256),
+            get_data_augmentation(),
             tf.keras.layers.GlobalAveragePooling2D(),
             tf.keras.layers.Dense(num_classes, activation=output_activation),
         ])
@@ -79,7 +96,7 @@ class ModelLoader:
     def create_model_CNN_simple(self, show_summary: bool = True, init_weigths_path: str = None, num_classes: int = 1):
         output_activation = 'sigmoid' if num_classes == 1 else 'softmax'
         model = tf.keras.Sequential([
-            tf.keras.layers.Flatten(input_shape=(256, 256, 3)),
+            tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dropout(0.4),
             tf.keras.layers.Dense(num_classes, activation=output_activation)
@@ -98,7 +115,7 @@ class ModelLoader:
     def create_model_CNN_hard(self, show_summary: bool = True, init_weigths_path: str = None, num_classes: int = 1):
         output_activation = 'sigmoid' if num_classes == 1 else 'softmax'
         model = tf.keras.Sequential([
-            get_data_augmentation(image_h=256, image_w=256),
+            get_data_augmentation(),
             tf.keras.layers.Conv2D(32, (3, 3), activation='relu', input_shape=(256, 256, 3)),
             tf.keras.layers.MaxPooling2D((2, 2)),
 
@@ -107,9 +124,6 @@ class ModelLoader:
 
             tf.keras.layers.Conv2D(128, (3, 3), activation='relu'),
             tf.keras.layers.MaxPooling2D((2, 2)),
-
-            # tf.keras.layers.Conv2D(256, (3, 3), activation='relu'),
-            # tf.keras.layers.MaxPooling2D((2, 2)),
 
             tf.keras.layers.Flatten(),
             tf.keras.layers.Dense(128, activation='relu'),
@@ -142,7 +156,7 @@ class ModelLoader:
         base_model.trainable = False  # Freeze base model
 
         x = base_model.output
-        x = get_data_augmentation(image_h=256, image_w=256)(x)
+        x = get_data_augmentation()(x)
         x = GlobalAveragePooling2D()(x)
         x = Dense(128, activation='relu')(x)
         x = Dropout(0.5)(x)
