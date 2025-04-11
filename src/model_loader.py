@@ -44,9 +44,8 @@ class ModelLoader:
             verbose=0,
             save_best_only=True,
             save_weights_only=True,
-            mode="auto",
-            save_freq="epoch",
-            initial_value_threshold=None,
+            mode="min",
+            save_freq="epoch"
         )
 
     def get_tensorboard_callback(self, log_dir: str = None):
