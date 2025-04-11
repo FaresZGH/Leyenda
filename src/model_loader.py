@@ -85,7 +85,7 @@ class ModelLoader:
         if show_summary:
             model.summary()
 
-        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.CategoricalCrossentropy()
+        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.SparseCategoricalCrossentropy()
 
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
@@ -105,7 +105,7 @@ class ModelLoader:
         if show_summary:
             model.summary()
 
-        loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True) if num_classes == 1 else tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+        loss_fn = tf.keras.losses.BinaryCrossentropy(from_logits=True) if num_classes == 1 else tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
         if init_weigths_path is not None:
@@ -134,7 +134,7 @@ class ModelLoader:
         if show_summary:
             model.summary()
 
-        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.CategoricalCrossentropy()
+        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.SparseCategoricalCrossentropy()
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
         if init_weigths_path is not None:
@@ -169,7 +169,7 @@ class ModelLoader:
         if show_summary:
             model.summary()
 
-        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.CategoricalCrossentropy()
+        loss_fn = tf.keras.losses.BinaryCrossentropy() if num_classes == 1 else tf.keras.losses.SparseCategoricalCrossentropy()
         model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
 
         if init_weigths_path is not None:
