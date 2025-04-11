@@ -101,7 +101,7 @@ def get_class_weigths(test_ds, is_binary: bool=True):
         y=y_true
     )
 
-    return class_weights
+    return dict(enumerate(class_weights))
 
 def showTrainingHistory(history):
     try:
