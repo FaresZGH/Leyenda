@@ -11,7 +11,7 @@ class ModelLoader:
         if model_weights_path is not None:
             self.model_weights_path: str = model_weights_path
         else:
-            self.model_weights_path: str = f"./../models/weights/{model_name}/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}_.h5"
+            self.model_weights_path: str = f"./../models/weights/{model_name}/{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}_.weights.h5"
 
         if model_logs_path is not None:
             self.model_logs_path: str = model_logs_path

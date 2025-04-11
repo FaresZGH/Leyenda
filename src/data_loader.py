@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from PIL import Image
 from tensorboard.compat.tensorflow_stub.errors import InvalidArgumentError
 
 
@@ -24,18 +23,7 @@ class DataLoader:
         folder = os.path.join(self.base_path, folder_name)
         files = [f for f in os.listdir(folder) if f.lower().endswith(self.valid_ext)]
         paths = [os.path.join(folder, f) for f in files]
-        # Vérifie la validité des images
-        def is_valid_image(path):
-            try:
-                img_bytes = tf.io.read_file(path)
-                decoded_img = tf.io.decode_image(img_bytes)
-                return True
-            except tf.errors.InvalidArgumentError as e:
-                print(f"Found bad path {path}...{e}")
-                return False
-
-        valid_paths = [p for p in paths if is_valid_image(p)]
-        return pd.DataFrame({"path": valid_paths, "label": label})
+        return pd.DataFrame({"path": paths, "label": label})
 
     def load_binary_dataset(self, positive_class, negative_classes, class_weights: bool=False):
         """Crée un dataset binaire équilibré (1 vs 0)"""

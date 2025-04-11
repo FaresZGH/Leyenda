@@ -102,3 +102,25 @@ def get_class_weigths(test_ds, is_binary: bool=True):
     )
 
     return class_weights
+
+def showTrainingHistory(history):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError()
+
+    plt.figure()
+    plt.plot(history.history['accuracy'])
+    plt.title('model accuracy')
+    plt.ylabel('accuracy')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'validation'], loc='upper right')
+    plt.show()
+
+    plt.figure()
+    plt.plot(history.history['loss'])
+    plt.title('model loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'validation'], loc='upper right')
+    plt.show()
