@@ -124,3 +124,25 @@ def showTrainingHistory(history):
     plt.xlabel('epoch')
     plt.legend(['train', 'validation'], loc='upper right')
     plt.show()
+
+def show_batch_images(dataset, class_names=None, max_images=10):
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        raise ImportError()
+    
+    plt.figure(figsize=(15, 4))
+    
+    for images, labels in dataset.take(1):  # Prend le premier batch
+        for i in range(min(max_images, len(images))):
+            ax = plt.subplot(2, 5, i + 1)
+            plt.imshow(images[i].numpy())
+            label = labels[i].numpy()
+            if class_names:
+                plt.title(class_names.get(label, f"Label: {label}"))
+            else:
+                plt.title(f"Label: {label}")
+            plt.axis("off")
+    
+    plt.tight_layout()
+    plt.show()    

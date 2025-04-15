@@ -67,6 +67,17 @@ class DataLoader:
         print(f"Multiclass Dataset size: {len(dfs)}")
         
         return self._create_tf_datasets(dfs)
+    
+    def load_unique_dataset(self, folder_name):
+        """Crée un dataset unique à partir d'un dossier"""
+        photo_folder = os.path.join(self.base_path, folder_name)
+
+        # Charger les données et trouver la taille minimale des classes
+        df = self.create_dataframe_for_class(photo_folder, label=1)
+
+        print(f"Photo Dataset size: {len(df)}")
+        
+        return self._create_tf_datasets(df)
 
     def _create_tf_datasets(self, df):
         train_val_df, test_df = train_test_split(df, test_size=self.test_ratio, stratify=df["label"], random_state=self.seed)
@@ -87,3 +98,14 @@ class DataLoader:
             return tf.data.Dataset.zip((img_ds, label_ds)).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
 
         return df_to_dataset(train_df), df_to_dataset(val_df), df_to_dataset(test_df)
+    
+    
+    def add_noise_to_dataset(self, dataset, noise_factor=0.5):
+        def add_noise(image, label):
+            noise = tf.random.normal(shape=tf.shape(image), mean=0.0, stddev=1.0)
+            noisy_image = image + noise_factor * noise
+            noisy_image = tf.clip_by_value(noisy_image, 0.0, 1.0)
+            return noisy_image, label
+
+        noisy_ds = dataset.map(add_noise, num_parallel_calls=tf.data.AUTOTUNE)
+        return noisy_ds
