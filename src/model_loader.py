@@ -92,7 +92,8 @@ class ModelLoader:
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
         if init_weigths_path is not None:
-            model.add_weights(tf.keras.models.load_weights(init_weigths_path))
+            model.build()
+            model.load_weights(init_weigths_path)
 
         return model
 
@@ -111,7 +112,8 @@ class ModelLoader:
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
         if init_weigths_path is not None:
-            model.add_weights(tf.keras.models.load_weights(init_weigths_path))
+            model.build(input_shape=(1, 256, 256, 3))
+            model.load_weights(init_weigths_path)
 
         return model
 
@@ -140,7 +142,8 @@ class ModelLoader:
         model.compile(loss=loss_fn, optimizer='adam', metrics=['accuracy'])
 
         if init_weigths_path is not None:
-            model.add_weights(tf.keras.models.load_weights(init_weigths_path))
+            model.build(input_shape=(1, 256, 256, 3))
+            model.load_weights(init_weigths_path)
 
         return model
 
@@ -175,82 +178,101 @@ class ModelLoader:
         model.compile(optimizer='adam', loss=loss_fn, metrics=['accuracy'])
 
         if init_weigths_path is not None:
+            model.build(input_shape=(1, 256, 256, 3))
             model.load_weights(init_weigths_path)
 
         return model
 
 
     def create_weighted_models(self):
+        # Fonction pour charger les poids de chaque modèle pour le tri des photos / non photos
+        # Cela prend les poids avec binary_cw, binary_nocw, multiclass_cw, multiclass_nocw comme nom de fichier
+        # dans les dossiers liés aux modèles
         try:
             from os import listdir
         except:
             raise ModuleNotFoundError()
 
         datasets_name = ['binary_cw', 'binary_nocw', 'multiclass_cw', 'multiclass_nocw']
+        all_model_cnn = {}
+        all_model_resnet = {}
+        all_model_inception = {}
 
         for repertory in os.listdir('./../models/weights/'):
-            print(f"repertory : {repertory}")
+
             if repertory == "CNN_HARD":
+                print(f"\nLoading models from {repertory}...")
                 for dataset_name in datasets_name:
-                    print(f"dataset_name : {dataset_name}")
+                    model = None
                     folder_path = f'./../models/weights/{repertory}/'
                     if dataset_name == "binary_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "binary_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "multiclass_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     elif dataset_name == "multiclass_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_CNN_hard(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     else:
                         raise ValueError("Dataset name not recognized")
+                    if model is not None:
+                        all_model_cnn[f'{dataset_name}'] = model
 
-                    print(f"weight_path : {weight_path}")
+                    print(f"{dataset_name}...Done")
 
 
             if repertory == "INCEPTION":
+                print(f"\nLoading models from {repertory}...")
+                model = None
                 for dataset_name in datasets_name:
-                    print(f"dataset_name : {dataset_name}")
                     folder_path = f'./../models/weights/{repertory}/'
                     if dataset_name == "binary_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        # model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "binary_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "multiclass_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     elif dataset_name == "multiclass_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_with_inception(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     else:
                         raise ValueError("Dataset name not recognized")
 
-                    print(f"weight_path : {weight_path}")
+                    if model is not None:
+                        all_model_inception[f'{dataset_name}'] = model
+
+                    print(f"{dataset_name}...Done")
 
 
             if repertory == "RES_NET":
+                print(f"\nLoading models from {repertory}...")
                 for dataset_name in datasets_name:
-                    print(f"dataset_name : {dataset_name}")
+                    model = None
                     folder_path = f'./../models/weights/{repertory}/'
                     if dataset_name == "binary_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        # model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "binary_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=1)
                     elif dataset_name == "multiclass_cw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     elif dataset_name == "multiclass_nocw":
-                        weight_path = [f for f in os.listdir(folder_path) if f.startswith(dataset_name)]
-                        #model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
+                        weight_path = folder_path + [f for f in os.listdir(folder_path) if f.startswith(dataset_name)][0]
+                        model = self.create_model_resnet50(show_summary=False, init_weigths_path=weight_path ,num_classes=5)
                     else:
                         raise ValueError("Dataset name not recognized")
+                    if model is not None:
+                        all_model_resnet[f'{dataset_name}'] = model
 
-                    print(f"weight_path : {weight_path}")
+                    print(f"{dataset_name}...Done")
+
+        return all_model_cnn, all_model_inception, all_model_resnet

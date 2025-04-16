@@ -6,7 +6,7 @@ from tensorboard.compat.tensorflow_stub.errors import InvalidArgumentError
 
 
 class DataLoader:
-    def __init__(self, base_path="/mnt/c/Users/fares/OneDrive/CESI/2025/DataScience/git/datasets", image_size=(256, 256), batch_size=32, test_ratio=0.2, validation_ratio=0.2, seed=42):
+    def __init__(self, base_path="./../datasets", image_size=(256, 256), batch_size=32, test_ratio=0.2, validation_ratio=0.2, seed=42):
         self.base_path = base_path
         self.image_size = image_size
         self.batch_size = batch_size
