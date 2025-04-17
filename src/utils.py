@@ -125,24 +125,61 @@ def showTrainingHistory(history):
     plt.legend(['train', 'validation'], loc='upper right')
     plt.show()
 
-def show_batch_images(dataset, class_names=None, max_images=10):
+def show_clean_and_noisy_images(clean_dataset, noisy_dataset, max_images=10):
+    import matplotlib.pyplot as plt
+
+    clean_images, _ = next(iter(clean_dataset))
+    noisy_images, _ = next(iter(noisy_dataset))
+
+    plt.figure(figsize=(15, 5))
+    for i in range(min(max_images, len(clean_images))):
+        # Image originale
+        ax = plt.subplot(2, max_images, i + 1)
+        plt.imshow(clean_images[i].numpy())
+        plt.title("Originale")
+        plt.axis("off")
+
+        # Image bruitée
+        ax = plt.subplot(2, max_images, max_images + i + 1)
+        plt.imshow(noisy_images[i].numpy())
+        plt.title("Bruitée")
+        plt.axis("off")
+
+    plt.tight_layout()
+    plt.show()
+ 
+
+def show_original_vs_decoded(noisy_dataset, clean_dataset, model, n=10):
     try:
         import matplotlib.pyplot as plt
     except ImportError:
         raise ImportError()
     
-    plt.figure(figsize=(15, 4))
-    
-    for images, labels in dataset.take(1):  # Prend le premier batch
-        for i in range(min(max_images, len(images))):
-            ax = plt.subplot(2, 5, i + 1)
-            plt.imshow(images[i].numpy())
-            label = labels[i].numpy()
-            if class_names:
-                plt.title(class_names.get(label, f"Label: {label}"))
-            else:
-                plt.title(f"Label: {label}")
-            plt.axis("off")
-    
+    noisy_images, _ = next(iter(noisy_dataset))
+    clean_images, _ = next(iter(clean_dataset))
+
+    decoded_images = model.predict(noisy_images)
+
+    plt.figure(figsize=(15, 6))
+    for i in range(n):
+
+        # Image bruitée (entrée)
+        ax = plt.subplot(3, n, i + 1)
+        plt.imshow(noisy_images[i].numpy())
+        plt.title("Bruitée")
+        plt.axis("off")
+
+        #  Image originale non bruitée 
+        ax = plt.subplot(3, n, n + i + 1)
+        plt.imshow(clean_images[i].numpy())
+        plt.title("Originale")
+        plt.axis("off")
+
+        # Image reconstruite
+        ax = plt.subplot(3, n, 2 * n + i + 1)
+        plt.imshow(decoded_images[i])
+        plt.title("Reconstruite")
+        plt.axis("off")
+
     plt.tight_layout()
-    plt.show()    
+    plt.show()
