@@ -183,3 +183,50 @@ def show_original_vs_decoded(noisy_dataset, clean_dataset, model, n=10):
 
     plt.tight_layout()
     plt.show()
+
+
+
+def filter_by_custom_binary_model(model, input_folder, output_folder,
+                                  image_size=(256, 256), threshold=0.5, max_images=None, verbose=True):
+    
+    try:
+        from tensorflow.keras.preprocessing import image
+        import numpy as np
+        import os
+        import shutil
+        from tqdm import tqdm
+    except ImportError:
+        raise ImportError()
+    """
+    Utilise un modèle binaire (photo vs non-photo) pour filtrer les vraies photos depuis un dossier d'images.
+    """
+
+    os.makedirs(output_folder, exist_ok=True)
+    image_files = [f for f in os.listdir(input_folder) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    if max_images:
+        image_files = image_files[:max_images]
+
+    kept = 0
+    print(f"Analyse de {len(image_files)} images...")
+
+    for img_name in tqdm(image_files):
+        img_path = os.path.join(input_folder, img_name)
+
+        try:
+            img = image.load_img(img_path, target_size=image_size)
+            x = image.img_to_array(img)
+            x = np.expand_dims(x, axis=0)
+            x = x / 255.0  
+
+            pred = model.predict(x, verbose=0)[0][0]  
+            if verbose:
+                print(f"{img_name} → {pred:.2f}")
+
+            if pred > threshold:
+                shutil.copy(img_path, os.path.join(output_folder, img_name))
+                kept += 1
+
+        except Exception as e:
+            print(f"Erreur avec {img_name} : {e}")
+
+    print(f"{kept}/{len(image_files)} images conservées dans : {output_folder}")
