@@ -100,12 +100,42 @@ class DataLoader:
         return df_to_dataset(train_df), df_to_dataset(val_df), df_to_dataset(test_df)
     
     
-    def add_noise_to_dataset(self, dataset, noise_factor=0.5):
-        def add_noise(image, label):
-            noise = tf.random.normal(shape=tf.shape(image), mean=0.0, stddev=1.0)
-            noisy_image = image + noise_factor * noise
-            noisy_image = tf.clip_by_value(noisy_image, 0.0, 1.0)
+    def add_noise_to_dataset(self, dataset, noise_factor_range=(0.1, 0.5), pixel_noise_prob=0.4):
+        def add_random_noise(image, label):
+            # Intensité du bruit aléatoire
+            noise_factor = tf.random.uniform([], noise_factor_range[0], noise_factor_range[1])
+
+            # Choix du type de bruit aléatoire (0 = gaussian, 1 = speckle, 2 = salt & pepper)
+            noise_type = tf.random.uniform([], 0, 3, dtype=tf.int32)
+
+            # Masque aléatoire : chaque pixel a pixel_noise_prob de chance d’être bruité
+            mask = tf.cast(tf.random.uniform(shape=tf.shape(image)) < pixel_noise_prob, tf.float32)
+
+            def gaussian_noise():
+                noise = tf.random.normal(shape=tf.shape(image), mean=0.0, stddev=1.0)
+                noisy = image + noise_factor * noise * mask
+                return tf.clip_by_value(noisy, 0.0, 1.0)
+
+            def speckle_noise():
+                noise = tf.random.normal(shape=tf.shape(image))
+                noisy = image + image * noise * noise_factor * mask
+                return tf.clip_by_value(noisy, 0.0, 1.0)
+
+            def salt_and_pepper_noise():
+                rnd = tf.random.uniform(shape=tf.shape(image))
+                salt = tf.cast(rnd < (pixel_noise_prob * noise_factor / 2), tf.float32)
+                pepper = tf.cast(rnd > (1.0 - pixel_noise_prob * noise_factor / 2), tf.float32)
+                noisy = image * (1.0 - salt - pepper) + salt
+                return tf.clip_by_value(noisy, 0.0, 1.0)
+
+            # Choix du bruit à appliquer
+            noisy_image = tf.switch_case(noise_type, branch_fns={
+                0: gaussian_noise,
+                1: speckle_noise,
+                2: salt_and_pepper_noise
+            })
+
             return noisy_image, label
 
-        noisy_ds = dataset.map(add_noise, num_parallel_calls=tf.data.AUTOTUNE)
-        return noisy_ds
+        return dataset.map(add_random_noise, num_parallel_calls=tf.data.AUTOTUNE)
+
