@@ -319,7 +319,7 @@ class ModelLoader:
         if show_summary:
             encoder.summary()
 
-        print("Encoder created successfully.")
+        print("\nEncoder created successfully.")
 
 
         # Entrées : latent + les 4 couches skip
@@ -400,9 +400,9 @@ class ModelLoader:
             autoencoder.summary()
 
         print(f"Autoencoder {self.model_name} created successfully.")
-
         return autoencoder
-    
+
+
     def create_base_autoencoder(self, show_summary: bool = True, init_weigths_path: str = None):
         try:
             import tensorflow as tf
