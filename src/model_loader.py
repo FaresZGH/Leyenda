@@ -276,3 +276,250 @@ class ModelLoader:
                     print(f"{dataset_name}...Done")
 
         return all_model_cnn, all_model_inception, all_model_resnet
+    
+    def create_skip_layer_autoencoder(self, show_summary: bool = True, init_weigths_path: str = None):
+
+        try:
+            import tensorflow as tf
+            from keras.layers import Conv2D, Conv2DTranspose, Concatenate, Input, BatchNormalization, LeakyReLU
+            from keras.models import Model
+        except ImportError:
+            raise ImportError()
+
+        encoder_inputs = Input(shape=(256, 256, 3))  # Image RGB 256x256
+
+        # --- Block 1 ---
+        x1 = Conv2D(32, (3, 3), strides=2, padding='same')(encoder_inputs)  # (128, 128, 32)
+        x1 = BatchNormalization()(x1)
+        x1 = LeakyReLU()(x1)
+
+        # --- Block 2 ---
+        x2 = Conv2D(64, (3, 3), strides=2, padding='same')(x1)  # (64, 64, 64)
+        x2 = BatchNormalization()(x2)
+        x2 = LeakyReLU()(x2)
+
+        # --- Block 3 ---
+        x3 = Conv2D(128, (3, 3), strides=2, padding='same')(x2)  # (32, 32, 128)
+        x3 = BatchNormalization()(x3)
+        x3 = LeakyReLU()(x3)
+
+        # --- Block 4 ---
+        x4 = Conv2D(256, (3, 3), strides=2, padding='same')(x3)  # (16, 16, 256)
+        x4 = BatchNormalization()(x4)
+        x4 = LeakyReLU()(x4)
+
+        # --- Block 5 ---
+        x5 = Conv2D(256, (3, 3), strides=2, padding='same')(x4)  # (8, 8, 256)
+        x5 = BatchNormalization()(x5)
+        x5 = LeakyReLU()(x5)
+
+        # Sorties : encoder_output + features pour skip connections
+        encoder = Model(inputs=encoder_inputs, outputs=[x5, x4, x3, x2, x1], name="encoder")
+
+        if show_summary:
+            encoder.summary()
+
+        print("Encoder created successfully.")
+
+
+        # Entrées : latent + les 4 couches skip
+        latent_input = Input(shape=(8, 8, 256))     # Sortie finale de l'encodeur
+        skip4 = Input(shape=(16, 16, 256))
+        skip3 = Input(shape=(32, 32, 128))
+        skip2 = Input(shape=(64, 64, 64))
+        skip1 = Input(shape=(128, 128, 32))
+
+        x = latent_input
+
+        # Decode Block 1
+        x = Conv2DTranspose(256, (3, 3), strides=2, padding='same')(x)  # (16, 16, 256)
+        x = Concatenate()([x, skip4])
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Decode Block 2
+        x = Conv2DTranspose(128, (3, 3), strides=2, padding='same')(x)  # (32, 32, 128)
+        x = Concatenate()([x, skip3])
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Decode Block 3
+        x = Conv2DTranspose(64, (3, 3), strides=2, padding='same')(x)  # (64, 64, 64)
+        x = Concatenate()([x, skip2])
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Decode Block 4
+        x = Conv2DTranspose(32, (3, 3), strides=2, padding='same')(x)  # (128, 128, 32)
+        x = Concatenate()([x, skip1])
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Decode Block 5 - reconstruction finale
+        x = Conv2DTranspose(32, (3, 3), strides=2, padding='same')(x)  # (256, 256, 32)
+        decoder_output = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)
+
+        # Modèle
+        decoder = Model(inputs=[latent_input, skip4, skip3, skip2, skip1], outputs=decoder_output, name="decoder")
+
+        if show_summary:
+            decoder.summary()
+
+        print("Decoder created successfully.")
+
+        encoder_outputs = encoder(encoder_inputs)
+        decoded_img = decoder(encoder_outputs)
+
+        autoencoder = Model(inputs=encoder_inputs, outputs=decoded_img)
+
+        if init_weigths_path is not None:
+            autoencoder.build(input_shape=(1, 256, 256, 3))
+            autoencoder.load_weights(init_weigths_path)
+
+        def ssim_metric(y_true, y_pred):
+            # SSIM attend des valeurs entre [0, 1], donc il est important de s'assurer que les images sont dans cette plage.
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
+            
+            # Calcul du SSIM sur les images RGB
+            return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+
+        def psnr_metric(y_true, y_pred):
+            # PSNR attend des valeurs entre [0, 1], donc on s'assure que les images sont dans cette plage.
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Normalisation entre [0, 1]
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Normalisation entre [0, 1]
+            
+            # Calcul du PSNR sur les images RGB
+            return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+    
+        # Compilation de l'autoencodeur
+        autoencoder.compile(optimizer="adam", loss="mae", metrics=['mae', ssim_metric, psnr_metric])
+
+        if show_summary:
+            print("\nAutoencoder Summary:")
+            autoencoder.summary()
+
+        print("Autoencoder created successfully.")
+
+        return encoder, decoder, autoencoder
+    
+    def create_base_autoencoder(self, show_summary: bool = True, init_weigths_path: str = None):
+        try:
+            import tensorflow as tf
+            from keras.layers import Conv2D, Conv2DTranspose, Concatenate, Input, BatchNormalization, LeakyReLU
+            from keras.models import Model
+        except ImportError:
+            raise ImportError()
+        
+        encoder_inputs = Input(shape=(256, 256, 3))  # Image RGB 256x256
+
+        # Conv Block 1
+        x = Conv2D(32, (3, 3), strides=2, padding='same')(encoder_inputs)  # (128, 128, 32)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Conv Block 2
+        x = Conv2D(64, (3, 3), strides=2, padding='same')(x)  # (64, 64, 64)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Conv Block 3
+        x = Conv2D(128, (3, 3), strides=2, padding='same')(x)  # (32, 32, 128)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Conv Block 4
+        x = Conv2D(256, (3, 3), strides=2, padding='same')(x)  # (16, 16, 256)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # Conv Block 5
+        x = Conv2D(256, (3, 3), strides=2, padding='same')(x)  # (8, 8, 256)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        encoder_output = x  # Pas de flatten, on garde (8, 8, 256)
+
+        encoder = Model(encoder_inputs, encoder_output, name="encoder")
+        if show_summary:
+            encoder.summary()
+
+        print("Encoder created successfully.")
+
+        # --- Decoder simplifié ---
+        decoder_inputs = Input(shape=(8, 8, 256))  # Sortie directe de l'encodeur
+
+        # DeConv1
+        x = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same')(decoder_inputs)  # (16, 16, 128)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # DeConv2
+        x = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same')(x)  # (32, 32, 128)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # DeConv3
+        x = Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same')(x)  # (64, 64, 64)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # DeConv4
+        x = Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same')(x)  # (128, 128, 32)
+        x = BatchNormalization()(x)
+        x = LeakyReLU()(x)
+
+        # DeConv5 - reconstruction finale
+        x = Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same')(x)  # (256, 256, 32)
+        decoder_output = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)  # Sortie finale RGB
+
+        # Modèle decoder
+        decoder = Model(decoder_inputs, decoder_output, name="decoder")
+
+        if show_summary:
+            decoder.summary()
+
+        # On récupère la sortie de l'encodeur (le "latent space")
+        latent_space = encoder(encoder_inputs)
+
+        # On passe cette sortie directement dans le décodeur
+        outputs = decoder(latent_space)
+
+        # Maintenant, on crée l'autoencodeur avec l'encodeur et le décodeur
+        autoencoder = Model(encoder_inputs, outputs, name="autoencoder")
+
+        if init_weigths_path is not None:   
+            autoencoder.build(input_shape=(1, 256, 256, 3))
+            autoencoder.load_weights(init_weigths_path)
+
+
+        def ssim_metric(y_true, y_pred):
+            # SSIM attend des valeurs entre [0, 1], donc il est important de s'assurer que les images sont dans cette plage.
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
+            
+            # Calcul du SSIM sur les images RGB
+            return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+
+        def psnr_metric(y_true, y_pred):
+            # PSNR attend des valeurs entre [0, 1], donc on s'assure que les images sont dans cette plage.
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Normalisation entre [0, 1]
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Normalisation entre [0, 1]
+            
+            # Calcul du PSNR sur les images RGB
+            return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+        
+        # Compilation de l'autoencodeur
+        autoencoder.compile(optimizer="adam", loss="mae", metrics=["mae", ssim_metric, psnr_metric])
+
+        if show_summary:
+            print("\nAutoencoder Summary:")
+            autoencoder.summary()
+
+        return autoencoder
+        
+
+
+
+
+            
