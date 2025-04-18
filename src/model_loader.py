@@ -8,7 +8,7 @@ from src.utils import get_data_augmentation
 
 class ModelLoader:
     def __init__(self, model_name, model_weights_path=None, model_logs_path=None):
-        self.model_name: str = None
+        self.model_name: str = model_name
 
         if model_weights_path is not None:
             self.model_weights_path: str = model_weights_path
@@ -396,10 +396,10 @@ class ModelLoader:
         autoencoder.compile(optimizer="adam", loss="mae", metrics=['mae', ssim_metric, psnr_metric])
 
         if show_summary:
-            print("\nAutoencoder Summary:")
+            print(f"\nAutoencoder {self.model_name} Summary:")
             autoencoder.summary()
 
-        print("Autoencoder created successfully.")
+        print(f"Autoencoder {self.model_name} created successfully.")
 
         return autoencoder
     
@@ -476,6 +476,8 @@ class ModelLoader:
         # Modèle decoder
         decoder = Model(decoder_inputs, decoder_output, name="decoder")
 
+        print("Decoder created successfully.")
+
         if show_summary:
             decoder.summary()
 
@@ -513,12 +515,15 @@ class ModelLoader:
         autoencoder.compile(optimizer="adam", loss="mae", metrics=["mae", ssim_metric, psnr_metric])
 
         if show_summary:
-            print("\nAutoencoder Summary:")
+            print(f"\nAutoencoder {self.model_name} Summary:")
             autoencoder.summary()
-        
-        return autoencoder
-        
 
+        print(f"Autoencoder {self.model_name} created successfully.")
+        return autoencoder
+
+    @tf.autograph.experimental.do_not_convert
+    def make_autoencoder_dataset(self, input_ds, target_ds):
+        return tf.data.Dataset.zip((input_ds.map(lambda x, y: x), target_ds.map(lambda x, y: x)))
 
 
 
