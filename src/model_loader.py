@@ -401,7 +401,7 @@ class ModelLoader:
 
         print("Autoencoder created successfully.")
 
-        return encoder, decoder, autoencoder
+        return autoencoder
     
     def create_base_autoencoder(self, show_summary: bool = True, init_weigths_path: str = None):
         try:
@@ -515,7 +515,7 @@ class ModelLoader:
         if show_summary:
             print("\nAutoencoder Summary:")
             autoencoder.summary()
-
+        
         return autoencoder
         
 
