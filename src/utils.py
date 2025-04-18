@@ -125,11 +125,22 @@ def showTrainingHistory(history):
     plt.legend(['train', 'validation'], loc='upper right')
     plt.show()
 
-def show_clean_and_noisy_images(clean_dataset, noisy_dataset, max_images=10):
+def show_clean_and_noisy_images(clean_dataset, noisy_dataset, max_images=10, batch_index=0):
     import matplotlib.pyplot as plt
 
-    clean_images, _ = next(iter(clean_dataset))
-    noisy_images, _ = next(iter(noisy_dataset))
+    # Si ce sont des tf.data.Dataset, les convertir temporairement en liste pour accéder à un batch précis
+    if hasattr(clean_dataset, 'skip'):
+        clean_batch = list(clean_dataset.skip(batch_index).take(1))[0]
+    else:
+        clean_batch = clean_dataset[batch_index]
+
+    if hasattr(noisy_dataset, 'skip'):
+        noisy_batch = list(noisy_dataset.skip(batch_index).take(1))[0]
+    else:
+        noisy_batch = noisy_dataset[batch_index]
+
+    clean_images, _ = clean_batch
+    noisy_images, _ = noisy_batch
 
     plt.figure(figsize=(15, 5))
     for i in range(min(max_images, len(clean_images))):
@@ -147,6 +158,8 @@ def show_clean_and_noisy_images(clean_dataset, noisy_dataset, max_images=10):
 
     plt.tight_layout()
     plt.show()
+
+
  
 
 def show_original_vs_decoded(noisy_dataset, clean_dataset, model, n=10):
