@@ -95,7 +95,7 @@ class DataLoader:
                 return img
 
             img_ds = path_ds.map(load_image, num_parallel_calls=tf.data.AUTOTUNE)
-            return tf.data.Dataset.zip((img_ds, label_ds)).batch(self.batch_size).prefetch(tf.data.AUTOTUNE)
+            return tf.data.Dataset.zip((img_ds, label_ds)).batch(self.batch_size, drop_remainder=True).prefetch(tf.data.AUTOTUNE)
 
         return df_to_dataset(train_df), df_to_dataset(val_df), df_to_dataset(test_df)
     
@@ -137,5 +137,6 @@ class DataLoader:
 
             return noisy_image, label
 
-        return dataset.map(add_random_noise, num_parallel_calls=tf.data.AUTOTUNE)
+        dataset = dataset.map(add_random_noise, num_parallel_calls=tf.data.AUTOTUNE)
+        return dataset
 
