@@ -243,3 +243,20 @@ def filter_by_custom_binary_model(model, input_folder, output_folder,
             print(f"Erreur avec {img_name} : {e}")
 
     print(f"{kept}/{len(image_files)} images conservées dans : {output_folder}")
+
+    def save_tokenizer(tokenizer, path_to_token = "./../models/weights/captioning_token/"):
+    token_json = tokenizer.to_json()
+
+    with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
+        f.write(token_json)
+
+def load_tokenizer(path_to_token = "./../models/weights/captioning_token/captioning_tokenizer_excellent.json"):
+    try:
+        from tensorflow.keras.preprocessing.text import tokenizer_from_json
+    except ImportError:
+        raise ImportError()
+
+    with open(path_to_token, "r", encoding="utf-8") as f:
+        token_json = f.read()
+
+    return tokenizer_from_json(token_json)
