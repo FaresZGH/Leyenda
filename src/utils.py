@@ -260,3 +260,31 @@ def load_tokenizer(path_to_token = "./../models/weights/captioning_token/caption
         token_json = f.read()
 
     return tokenizer_from_json(token_json)
+
+def is_valid_image(path):
+    try:
+        import tensorflow as tf
+    except ImportError:
+        raise ImportError()
+
+    try:
+        img_bytes = tf.io.read_file(path)
+        decoded_img = tf.io.decode_image(img_bytes)
+        return True
+    except tf.errors.InvalidArgumentError as e:
+        print(f"Found bad path {path}...{e}")
+        return False
+
+def clean_invalid_images(datasets_base_path):
+    try:
+        import os
+    except ImportError:
+        raise ImportError()
+
+    for root, dirs, files in os.walk(datasets_base_path):
+        for file in files:
+            if file.lower().endswith((".png", ".jpeg", ".png", ".bmp")):
+                image_path = os.path.join(root, file)
+                if not is_valid_image(image_path):
+                    print(f"Removing invalid image: {image_path}")
+                    os.remove(image_path)
