@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from tensorboard.compat.tensorflow_stub.errors import InvalidArgumentError
 
 
 class DataLoader:
@@ -49,7 +48,6 @@ class DataLoader:
         dfs = []
         min_count = float('inf')
 
-        # Charger les données et trouver la taille minimale des classes
         for idx, folder in enumerate(class_folders):
             df = self.create_dataframe_for_class(folder, label=idx)
             dfs.append(df)
@@ -72,7 +70,6 @@ class DataLoader:
         """Crée un dataset unique à partir d'un dossier"""
         photo_folder = os.path.join(self.base_path, folder_name)
 
-        # Charger les données et trouver la taille minimale des classes
         df = self.create_dataframe_for_class(photo_folder, label=1)
 
         print(f"Photo Dataset size: {len(df)}")
@@ -108,7 +105,6 @@ class DataLoader:
             # Choix du type de bruit aléatoire (0 = gaussian, 1 = speckle, 2 = salt & pepper)
             noise_type = tf.random.uniform([], 0, 3, dtype=tf.int32)
 
-            # Masque aléatoire : chaque pixel a pixel_noise_prob de chance d’être bruité
             mask = tf.cast(tf.random.uniform(shape=tf.shape(image)) < pixel_noise_prob, tf.float32)
 
             def gaussian_noise():

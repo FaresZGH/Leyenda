@@ -274,7 +274,6 @@ def is_valid_image(path):
         decoded_img = tf.io.decode_image(img_bytes)
         return True
     except tf.errors.InvalidArgumentError as e:
-        print(f"Found bad path {path}...{e}")
         return False
 
 def clean_invalid_images(datasets_base_path):
@@ -337,27 +336,23 @@ def load_caption_dataset(annotation_path, image_folder, nb_images=None):
         import json
         import collections
         import os
-        # Charger les annotations TRAIN (et uniquement celles-là !)
+
     except ImportError:
         raise ImportError()
     
     with open(annotation_path, 'r') as f:
         annotations = json.load(f)
 
-    # Grouper les annotations par image_id
     image_path_to_caption = collections.defaultdict(list)
     for val in annotations['annotations']:
         caption = '<start> ' + val['caption'] + ' <end>'
         image_path = os.path.join(image_folder, 'COCO_train2014_' + '%012d.jpg' % val['image_id'])
         image_path_to_caption[image_path].append(caption)
 
-    # Prendre un sous-ensemble aléatoire d'images
     image_paths = list(image_path_to_caption.keys())
-    train_image_paths = image_paths[:nb_images]  # tu peux ajuster ce nombre
-
+    train_image_paths = image_paths[:nb_images] 
     print(f"{len(train_image_paths)} images sélectionnées.")
 
-    # Créer les listes d'annotations et de chemins d'images correspondantes
     train_captions = []
     img_name_vector = []
 
@@ -402,30 +397,20 @@ def preprocess_caption_annotation(train_captions=None, is_training: bool =False,
             return max(len(t) for t in tensor)
     
     if is_training:
-        # Trouver la taille maximale 
-        
 
-        # Chosir les 5000 mots les plus frequents du vocabulaire
         top_k = nb_top_word
-        #La classe Tokenizer permet de faire du pre-traitement de texte pour reseau de neurones 
+
         tokenizer = tf.keras.preprocessing.text.Tokenizer(num_words=top_k,
                                                         oov_token="<unk>",
                                                         filters='!"#$%&()*+.,-/:;=?@[\]^_`{|}~ ')
-        # Construit un vocabulaire en se basant sur la liste train_captions
         tokenizer.fit_on_texts(train_captions)
 
-        # Créer le token qui sert à remplir les annotations pour égaliser leurs longueurs
         tokenizer.word_index['<pad>'] = 0
         tokenizer.index_word[0] = '<pad>'
 
-        # Création des vecteurs (liste de token entiers) à partir des annotations (liste de mots)
         train_seqs = tokenizer.texts_to_sequences(train_captions)
 
-        # Remplir chaque vecteur jusqu'à la longueur maximale des annotations
         cap_vector = tf.keras.preprocessing.sequence.pad_sequences(train_seqs, padding='post')
-
-        # Calcule la longueur maximale qui est utilisée pour stocker les poids d'attention 
-        # Elle servira plus tard pour l'affichage lors de l'évaluation
         max_length = calc_max_length(train_seqs)
 
         print("Création du Tokenizer et du vecteur d'annotations terminée.")
@@ -482,8 +467,8 @@ def create_caption_dataset(caption_vector, img_name_vector, tokenizer):
         cap.set_shape([None])             
         return img_tensor, cap
 
-    BATCH_SIZE = 64 # taille du batch
-    BUFFER_SIZE = 1000 # taille du buffer pour melanger les donnes
+    BATCH_SIZE = 64
+    BUFFER_SIZE = 1000 
 
     img_to_cap_vector = collections.defaultdict(list)
     for img, cap in zip(img_name_vector, caption_vector):
@@ -572,7 +557,6 @@ def captionning_evaluate(image_path, encoder, decoder, max_length=None, tokenize
         top_ids = top_k.indices.numpy()
         top_scores = top_k.values.numpy()
 
-        # print(f"\n🔁 Step {i}")
         for rank, (word_id, score) in enumerate(zip(top_ids, top_scores), start=1):
             word = tokenizer.index_word.get(word_id, "<unk>")
             # print(f"   {rank}. {word} (id: {word_id}) — score: {score:.4f}")
@@ -590,6 +574,27 @@ def captionning_evaluate(image_path, encoder, decoder, max_length=None, tokenize
     attention_plot = attention_plot[:len(result), :]
     return result, attention_plot
 
+def run_captioning_on_folder(folder_path, encoder, decoder, tokenizer, max_length, image_features_extract_model, is_gru=True, max_images=10):
+    try:
+        import os
+        import random
+    except ImportError:
+        raise ImportError()
+    image_files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png'))]
+    
+    selected_images = random.sample(image_files, min(max_images, len(image_files)))
+
+    for fname in selected_images:
+        img_path = os.path.join(folder_path, fname)
+        print(f"\{fname}")
+        result, attn = captionning_evaluate(
+            img_path, encoder, decoder,
+            max_length=max_length,
+            tokenizer=tokenizer,
+            is_gru=is_gru,
+            image_features_extract_model=image_features_extract_model
+        )
+        plot_attention(img_path, result, attn)
 
 def plot_attention(image_path, result, attention_plot):
     try:
@@ -598,6 +603,7 @@ def plot_attention(image_path, result, attention_plot):
         from PIL import Image
     except ImportError:
         raise ImportError()
+    
     temp_image = np.array(Image.open(image_path))
     fig = plt.figure(figsize=(12, 12))
     len_result = len(result)
@@ -615,81 +621,5 @@ def plot_attention(image_path, result, attention_plot):
         img = ax.imshow(temp_image)
         ax.imshow(temp_att, cmap='gray', alpha=0.6, extent=img.get_extent())
         ax.axis("off")
-    plt.tight_layout()
-    plt.show()
-
-def evaluate(image, encoder, decoder, real_caption_tokens=None, max_length=None, image_features_extract_model=None, tokenizer=None):
-    try:
-        import numpy as np
-        import tensorflow as tf
-    except ImportError:
-        print("Please install nltk to compute BLEU score.")
-        return None, None, None
-    attention_features_shape = 64
-    attention_plot = np.zeros((max_length, attention_features_shape))
-
-    hidden = tf.zeros((1, decoder.units))
-
-    temp_input = tf.expand_dims(load_image(image)[0], 0)
-    img_tensor_val = image_features_extract_model(temp_input)
-    img_tensor_val = tf.reshape(img_tensor_val, (img_tensor_val.shape[0], -1, img_tensor_val.shape[3]))
-
-    features = encoder(img_tensor_val)
-
-    dec_input = tf.expand_dims([tokenizer.word_index['<start>']], 0)
-    result = []
-
-    for i in range(max_length):
-        predictions, hidden, attention_weights = decoder(dec_input, features, hidden, training=False)
-        attention_plot[i] = tf.reshape(attention_weights, (-1,)).numpy()
-
-        top_k = tf.nn.top_k(predictions[0], k=5)
-        top_ids = top_k.indices.numpy()
-        top_scores = top_k.values.numpy()
-
-        print(f"\n🔁 Step {i}")
-        for rank, (word_id, score) in enumerate(zip(top_ids, top_scores), start=1):
-            word = tokenizer.index_word.get(word_id, "<unk>")
-            print(f"   {rank}. {word} (id: {word_id}) — score: {score:.4f}")
-
-        predicted_id = top_ids[0]
-        predicted_word = tokenizer.index_word.get(predicted_id, '<unk>')
-        result.append(predicted_word)
-
-        if predicted_word == '<end>':
-            print("✅ Fin de génération détectée avec <end>")
-            break
-
-        dec_input = tf.expand_dims([predicted_id], 0)
-
-    attention_plot = attention_plot[:len(result), :]
-    return result, attention_plot
-
-# Fonction permettant la représentation de l'attention au niveau de l'image
-def plot_attention(image, result, attention_plot):
-    import matplotlib.pyplot as plt
-    import numpy as np
-    from PIL import Image
-
-    temp_image = np.array(Image.open(image))
-
-    len_result = len(result)
-    fig = plt.figure(figsize=(12, 12))
-
-    # Affiche l'image de base en haut
-    ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, 1)
-    ax.set_title("Original Image")
-    ax.imshow(temp_image)
-    ax.axis("off")
-
-    # Affiche les attentions
-    for l in range(len_result):
-        temp_att = np.resize(attention_plot[l], (8, 8))
-        ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, l + 2)
-        ax.set_title(result[l])
-        img = ax.imshow(temp_image)
-        ax.imshow(temp_att, cmap='gray', alpha=0.6, extent=img.get_extent())
-        ax.axis("off")
-
     plt.tight_layout()
     plt.show()

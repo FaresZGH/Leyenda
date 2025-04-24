@@ -27,9 +27,9 @@ class ModelLoader:
             raise ImportError()
 
         early_stop = EarlyStopping(
-            monitor=value_to_monitor,  # Ce qu’on surveille (val_loss ou val_accuracy)
-            patience=patience,  # Nombre d’époques sans amélioration avant arrêt
-            restore_best_weights=restore_best_weights  # Recharger les meilleurs poids à la fin
+            monitor=value_to_monitor,  
+            patience=patience,  
+            restore_best_weights=restore_best_weights  
         )
 
         return early_stop
@@ -377,15 +377,12 @@ class ModelLoader:
             autoencoder.load_weights(init_weigths_path)
 
         def ssim_metric(y_true, y_pred):
-            # SSIM attend des valeurs entre [0, 1], donc il est important de s'assurer que les images sont dans cette plage.
             y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
             y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
             
-            # Calcul du SSIM sur les images RGB
             return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
 
         def psnr_metric(y_true, y_pred):
-            # PSNR attend des valeurs entre [0, 1], donc on s'assure que les images sont dans cette plage.
             y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Normalisation entre [0, 1]
             y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Normalisation entre [0, 1]
             
@@ -438,7 +435,7 @@ class ModelLoader:
         x = BatchNormalization()(x)
         x = LeakyReLU()(x)
 
-        encoder_output = x  # Pas de flatten, on garde (8, 8, 256)
+        encoder_output = x 
 
         encoder = Model(encoder_inputs, encoder_output, name="encoder")
         if show_summary:
@@ -447,7 +444,7 @@ class ModelLoader:
         print("Encoder created successfully.")
 
         # --- Decoder simplifié ---
-        decoder_inputs = Input(shape=(8, 8, 256))  # Sortie directe de l'encodeur
+        decoder_inputs = Input(shape=(8, 8, 256)) 
 
         # DeConv1
         x = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same')(decoder_inputs)  # (16, 16, 128)
@@ -471,9 +468,8 @@ class ModelLoader:
 
         # DeConv5 - reconstruction finale
         x = Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same')(x)  # (256, 256, 32)
-        decoder_output = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)  # Sortie finale RGB
+        decoder_output = Conv2D(3, (3, 3), activation='sigmoid', padding='same')(x)  
 
-        # Modèle decoder
         decoder = Model(decoder_inputs, decoder_output, name="decoder")
 
         print("Decoder created successfully.")
@@ -481,13 +477,10 @@ class ModelLoader:
         if show_summary:
             decoder.summary()
 
-        # On récupère la sortie de l'encodeur (le "latent space")
         latent_space = encoder(encoder_inputs)
 
-        # On passe cette sortie directement dans le décodeur
         outputs = decoder(latent_space)
 
-        # Maintenant, on crée l'autoencodeur avec l'encodeur et le décodeur
         autoencoder = Model(encoder_inputs, outputs, name="autoencoder")
 
         if init_weigths_path is not None:   
@@ -496,22 +489,18 @@ class ModelLoader:
 
 
         def ssim_metric(y_true, y_pred):
-            # SSIM attend des valeurs entre [0, 1], donc il est important de s'assurer que les images sont dans cette plage.
-            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
-            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Pour être sûr que les valeurs sont entre [0, 1]
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0) 
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0) 
             
             # Calcul du SSIM sur les images RGB
-            return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+            return tf.reduce_mean(tf.image.ssim(y_true, y_pred, max_val=1.0))  
 
         def psnr_metric(y_true, y_pred):
-            # PSNR attend des valeurs entre [0, 1], donc on s'assure que les images sont dans cette plage.
-            y_true = tf.clip_by_value(y_true, 0.0, 1.0)  # Normalisation entre [0, 1]
-            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0)  # Normalisation entre [0, 1]
+            y_true = tf.clip_by_value(y_true, 0.0, 1.0) 
+            y_pred = tf.clip_by_value(y_pred, 0.0, 1.0) 
             
-            # Calcul du PSNR sur les images RGB
-            return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0))  # max_val=1.0 pour les images normalisées
+            return tf.reduce_mean(tf.image.psnr(y_true, y_pred, max_val=1.0)) 
         
-        # Compilation de l'autoencodeur
         autoencoder.compile(optimizer="adam", loss="mae", metrics=["mae", ssim_metric, psnr_metric])
 
         if show_summary:
