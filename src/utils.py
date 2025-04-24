@@ -247,8 +247,8 @@ def filter_by_custom_binary_model(model, input_folder, output_folder,
 def save_tokenizer(tokenizer, path_to_token = "./../models/weights/captioning_token/"):
     token_json = tokenizer.to_json()
 
-        with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
-            f.write(token_json)
+    with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
+        f.write(token_json)
 
 def load_tokenizer(path_to_token = "./../models/weights/captioning_token/captioning_tokenizer_excellent.json"):
     try:
