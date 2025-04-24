@@ -247,8 +247,8 @@ def filter_by_custom_binary_model(model, input_folder, output_folder,
 def save_tokenizer(tokenizer, path_to_token = "./../models/weights/captioning_token/"):
     token_json = tokenizer.to_json()
 
-    with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
-        f.write(token_json)
+        with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
+            f.write(token_json)
 
 def load_tokenizer(path_to_token = "./../models/weights/captioning_token/captioning_tokenizer_excellent.json"):
     try:
@@ -260,6 +260,75 @@ def load_tokenizer(path_to_token = "./../models/weights/captioning_token/caption
         token_json = f.read()
 
     return tokenizer_from_json(token_json)
+
+def is_valid_image(path):
+    try:
+        import tensorflow as tf
+    except ImportError:
+        raise ImportError()
+
+    try:
+        img_bytes = tf.io.read_file(path)
+        decoded_img = tf.io.decode_image(img_bytes)
+        return True
+    except tf.errors.InvalidArgumentError as e:
+        print(f"Found bad path {path}...{e}")
+        return False
+
+def clean_invalid_images(datasets_base_path):
+    try:
+        import os
+    except ImportError:
+        raise ImportError()
+
+    for root, dirs, files in os.walk(datasets_base_path):
+        for file in files:
+            if file.lower().endswith((".png", ".jpeg", ".png", ".bmp")):
+                image_path = os.path.join(root, file)
+                if not is_valid_image(image_path):
+                    print(f"Removing invalid image: {image_path}")
+                    os.remove(image_path)
+
+def denoise_images(input_dir, output_dir, model, target_size=(128, 128)):
+    """
+    Débruite les images du dossier input_dir en utilisant le modèle donné
+    et les sauvegarde dans output_dir.
+
+    :param input_dir: Dossier contenant les images filtrées (Photo_filtered)
+    :param output_dir: Dossier où sauvegarder les images débruitées (Photo_denoised)
+    :param model: Modèle autoencodeur pour débruiter les images
+    :param target_size: Taille à laquelle redimensionner les images pour le modèle
+    """
+    try:
+        import os
+        import numpy as np
+        from tensorflow.keras.preprocessing.image import load_img, img_to_array, array_to_img, save_img
+    except ImportError:
+        raise ImportError()
+
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    for filename in os.listdir(input_dir):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            input_path = os.path.join(input_dir, filename)
+            output_path = os.path.join(output_dir, filename)
+
+            try:
+                # Chargement et préparation de l'image
+                img = load_img(input_path, target_size=target_size)
+                img_array = img_to_array(img) / 255.0
+                img_array = np.expand_dims(img_array, axis=0)
+
+                # Débruitage
+                denoised = model.predict(img_array)
+                denoised_img = array_to_img(denoised[0])
+
+                # Sauvegarde
+                save_img(output_path, denoised_img)
+                print(f"Image traitée : {filename}")
+            except Exception as e:
+                print(f"Erreur lors du traitement de {filename} : {e}")
 
 def load_caption_dataset(annotation_path, image_folder, nb_images=2000):
     try:
