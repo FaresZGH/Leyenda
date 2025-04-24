@@ -135,4 +135,3 @@ class DataLoader:
 
         dataset = dataset.map(add_random_noise, num_parallel_calls=tf.data.AUTOTUNE)
         return dataset
-

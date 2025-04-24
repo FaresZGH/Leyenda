@@ -290,22 +290,30 @@ def clean_invalid_images(datasets_base_path):
                     print(f"Removing invalid image: {image_path}")
                     os.remove(image_path)
 
-def denoise_images(input_dir, output_dir, model, target_size=(128, 128)):
-    """
-    Débruite les images du dossier input_dir en utilisant le modèle donné
-    et les sauvegarde dans output_dir.
+def is_noisy_image(img_array, threshold=0.05):
+    import cv2
+    import numpy as np
 
-    :param input_dir: Dossier contenant les images filtrées (Photo_filtered)
-    :param output_dir: Dossier où sauvegarder les images débruitées (Photo_denoised)
-    :param model: Modèle autoencodeur pour débruiter les images
-    :param target_size: Taille à laquelle redimensionner les images pour le modèle
-    """
-    try:
-        import os
-        import numpy as np
-        from tensorflow.keras.preprocessing.image import load_img, img_to_array, array_to_img, save_img
-    except ImportError:
-        raise ImportError()
+    # Convertir en niveaux de gris
+    gray = cv2.cvtColor((img_array * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+
+    # Appliquer un flou gaussien pour lisser les détails
+    blurred = cv2.GaussianBlur(gray, (3, 3), 0)
+
+    # Calculer l'image de différence
+    diff = cv2.absdiff(gray, blurred)
+
+    # Normaliser et calculer la variance de la différence
+    diff = diff.astype(np.float32) / 255.0
+    noise_score = np.std(diff)
+
+    return noise_score > threshold
+
+def denoise_images(input_dir, output_dir, model, target_size=(256, 256), check_noise=False):
+    import os
+    import numpy as np
+    import shutil
+    from tensorflow.keras.preprocessing.image import load_img, img_to_array, array_to_img, save_img
 
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
@@ -319,17 +327,19 @@ def denoise_images(input_dir, output_dir, model, target_size=(128, 128)):
                 # Chargement et préparation de l'image
                 img = load_img(input_path, target_size=target_size)
                 img_array = img_to_array(img) / 255.0
-                img_array = np.expand_dims(img_array, axis=0)
 
-                # Débruitage
-                denoised = model.predict(img_array)
-                denoised_img = array_to_img(denoised[0])
-
-                # Sauvegarde
-                save_img(output_path, denoised_img)
-                print(f"Image traitée : {filename}")
+                if not check_noise or is_noisy_image(img_array):
+                    img_array_exp = np.expand_dims(img_array, axis=0)
+                    denoised = model.predict(img_array_exp)
+                    denoised_img = array_to_img(denoised[0])
+                    save_img(output_path, denoised_img)
+                    print(f"Image débruitée : {filename}")
+                else:
+                    shutil.copy(input_path, output_path)
+                    print(f"Image non bruitée copiée : {filename}")
             except Exception as e:
                 print(f"Erreur lors du traitement de {filename} : {e}")
+
 
 def load_caption_dataset(annotation_path, image_folder, nb_images=None):
     try:
@@ -623,3 +633,54 @@ def plot_attention(image_path, result, attention_plot):
         ax.axis("off")
     plt.tight_layout()
     plt.show()
+
+
+def add_noise_to_images_in_folder(input_dir, output_dir, noise_factor_range=(0.1, 0.5), pixel_noise_prob=0.4, target_size=(128, 128)):
+    try:
+        import os
+        import numpy as np
+        import tensorflow as tf
+        from tensorflow.keras.preprocessing.image import load_img, img_to_array, array_to_img, save_img
+    except ImportError as e:
+        print(f"Erreur d'importation : {e}")
+        return
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    def apply_noise(img):
+        noise_factor = np.random.uniform(*noise_factor_range)
+        noise_type = np.random.randint(0, 3)
+        mask = np.random.rand(*img.shape) < pixel_noise_prob
+
+        if noise_type == 0:
+            # Gaussian noise
+            noise = np.random.normal(0, 1, img.shape)
+            noisy = img + noise_factor * noise * mask
+        elif noise_type == 1:
+            # Speckle noise
+            noise = np.random.normal(0, 1, img.shape)
+            noisy = img + img * noise * noise_factor * mask
+        else:
+            # Salt and pepper noise
+            rnd = np.random.rand(*img.shape)
+            salt = (rnd < (pixel_noise_prob * noise_factor / 2)).astype(np.float32)
+            pepper = (rnd > (1.0 - pixel_noise_prob * noise_factor / 2)).astype(np.float32)
+            noisy = img * (1.0 - salt - pepper) + salt
+
+        return np.clip(noisy, 0.0, 1.0)
+
+    for filename in os.listdir(input_dir):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+            try:
+                input_path = os.path.join(input_dir, filename)
+                output_path = os.path.join(output_dir, filename)
+
+                img = load_img(input_path, target_size=target_size)
+                img_array = img_to_array(img) / 255.0  # Normalisation
+                noisy_img_array = apply_noise(img_array)
+                noisy_img = array_to_img(noisy_img_array)
+                save_img(output_path, noisy_img)
+                print(f"Image bruitée enregistrée : {filename}")
+            except Exception as e:
+                print(f"Erreur sur {filename} : {e}")
