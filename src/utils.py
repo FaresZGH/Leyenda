@@ -250,16 +250,18 @@ def save_tokenizer(tokenizer, path_to_token = "./../models/weights/captioning_to
     with open(path_to_token + "captioning_tokenizer_excellent.json", "w", encoding="utf-8") as f:
         f.write(token_json)
 
-def load_tokenizer(path_to_token = "./../models/weights/captioning_token/captioning_tokenizer_excellent.json"):
+def load_tokenizer(path_to_token = "./../models/weights/captioning_token/captioning_tokenizer_GRU.json"):
     try:
         from tensorflow.keras.preprocessing.text import tokenizer_from_json
     except ImportError:
         raise ImportError()
 
-    with open(path_to_token, "r", encoding="utf-8") as f:
-        token_json = f.read()
+    with open(path_to_token, 'r', encoding='utf-8') as f:
+        tokenizer_json = f.read()
+        tokenizer = tokenizer_from_json(tokenizer_json)
+        
+    return tokenizer
 
-    return tokenizer_from_json(token_json)
 
 def is_valid_image(path):
     try:
@@ -330,7 +332,7 @@ def denoise_images(input_dir, output_dir, model, target_size=(128, 128)):
             except Exception as e:
                 print(f"Erreur lors du traitement de {filename} : {e}")
 
-def load_caption_dataset(annotation_path, image_folder, nb_images=2000):
+def load_caption_dataset(annotation_path, image_folder, nb_images=None):
     try:
         import json
         import collections
@@ -368,59 +370,29 @@ def load_caption_dataset(annotation_path, image_folder, nb_images=2000):
 
     return train_captions, img_name_vector
 
-def preprocess_captionning_image(img_name_vector):
-    """
-    Charge et prétraite une image à partir d'un chemin donné.
-    """
+def load_captionning_image(image_path):
     try:
         import tensorflow as tf
-        import numpy as np
-        from tqdm import tqdm
-        import os
     except ImportError:
         raise ImportError()
+    img = tf.io.read_file(image_path)
+    img = tf.image.decode_jpeg(img, channels=3)
+    img = tf.image.resize(img, (299, 299))
+    img = tf.keras.applications.inception_v3.preprocess_input(img)
+    return img, image_path
 
-    # Telechargement du modèle InceptionV3 pré-entrainé avec la classification sur ImageNet
-    image_model = tf.keras.applications.InceptionV3(include_top=False,
-                                                    weights='imagenet')
+def build_image_model():
+    try:
+        import tensorflow as tf
+    except ImportError:
+        raise ImportError()
+    base_model = tf.keras.applications.InceptionV3(include_top=False, weights='imagenet')
+    new_input = base_model.input
+    hidden_layer = base_model.layers[-1].output
+    return tf.keras.Model(new_input, hidden_layer)
 
-    # Création d'une variable qui sera l'entrée du nouveau modèle de pré-traitement d'images
-    new_input = image_model.input
-
-    # Récupérer la dernière couche cachée qui contient l'image en représentation compacte
-    hidden_layer = image_model.layers[-1].output
-
-    # Modèle qui calcule une représentation dense des images avec InceptionV3
-    image_features_extract_model = tf.keras.Model(inputs=new_input, outputs=hidden_layer)
     
-    # Pré-traitement des images
-    # Prendre les noms des images
-    encode_train = sorted(set(img_name_vector))
-
-    # Creation d'une instance de "tf.data.Dataset" partant des noms des images 
-    image_dataset = tf.data.Dataset.from_tensor_slices(encode_train)
-    # Division du données en batchs après application du pré-traitement fait par load_image
-    image_dataset = image_dataset.map(
-    load_image, num_parallel_calls=tf.data.experimental.AUTOTUNE).batch(16)
-
-    # Parcourir le dataset batch par batch pour effectuer le pré-traitement d'InceptionV3
-    for img, path in tqdm(image_dataset):
-        # Passage des images dans le CNN pour récupérer les features
-        batch_features = image_features_extract_model(img)
-
-        batch_features = tf.reshape(batch_features,
-                                    (batch_features.shape[0], -1, batch_features.shape[3]))
-
-        # Sauvegarde de chaque image prétraitée individuellement
-        for bf, p in zip(batch_features, path):
-            path_of_feature = p.numpy().decode("utf-8")
-            # Ajout de l'extension .npy pour le fichier sauvegardé
-            if not os.path.exists(path_of_feature + ".npy"):
-                np.save(path_of_feature, bf.numpy())
-    
-    return image_features_extract_model
-
-def preprocess_caption_annotation(train_captions, is_training: bool =False, tokenizer_path=(), nb_top_word : int = 5000):
+def preprocess_caption_annotation(train_captions=None, is_training: bool =False, tokenizer_path=(), nb_top_word : int = 5000):
     try:
         import tensorflow as tf
     except ImportError:
@@ -470,7 +442,7 @@ def preprocess_caption_annotation(train_captions, is_training: bool =False, toke
         print("Taille maximale des annotations : ", reloaded_tokenizer.num_words)
         return reloaded_tokenizer, reloaded_tokenizer.num_words, max_length
     
-def load_image(image_path, image_size=(256, 256)):
+def load_image(image_path):
     try:
         import tensorflow as tf
     except ImportError:
@@ -568,26 +540,96 @@ def create_caption_dataset(caption_vector, img_name_vector, tokenizer):
     print(f"Train Dataset size: {len(img_name_train)}")
     print(f"Validation Dataset size: {len(img_name_val)}")
     
-    return dataset, img_name_train, cap_train, dataset_val, img_name_val, cap_val, num_steps, val_num_steps
+    return dataset, img_name_train, cap_train, dataset_val, img_name_val, cap_val, num_steps, val_num_steps, cap_val_vector
 
-
-def captionning_evaluate(image, encoder, decoder, real_caption_tokens=None, max_length=None, image_features_extract_model=None, tokenizer=None, is_gru: bool = False):
+def captionning_evaluate(image_path, encoder, decoder, max_length=None, tokenizer=None, is_gru: bool = True, image_features_extract_model=None):
     try:
-        from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+    
+        import numpy as np
+        import tensorflow as tf
+    except ImportError:
+        return None, None, None
+
+    attention_plot = np.zeros((max_length, 64))
+    hidden = decoder.reset_state(batch_size=1)
+
+    img, _ = load_image(image_path)
+    temp_input = tf.expand_dims(img, 0)
+    img_tensor_val = image_features_extract_model(temp_input)
+    print("Inception output:", img_tensor_val.shape)
+    img_tensor_val = tf.reshape(img_tensor_val, (img_tensor_val.shape[0], -1, img_tensor_val.shape[3]))
+    print("Reshaped:", img_tensor_val.shape)
+    features = encoder(img_tensor_val)
+
+    dec_input = tf.expand_dims([tokenizer.word_index['<start>']], 0)
+    result = []
+
+    for i in range(max_length):
+        predictions, hidden, attention_weights = decoder(dec_input, features, hidden)
+        attention_plot[i] = tf.reshape(attention_weights, (-1,)).numpy()
+
+        top_k = tf.nn.top_k(predictions[0], k=5)
+        top_ids = top_k.indices.numpy()
+        top_scores = top_k.values.numpy()
+
+        # print(f"\n🔁 Step {i}")
+        for rank, (word_id, score) in enumerate(zip(top_ids, top_scores), start=1):
+            word = tokenizer.index_word.get(word_id, "<unk>")
+            # print(f"   {rank}. {word} (id: {word_id}) — score: {score:.4f}")
+
+        predicted_id = top_ids[0]
+        predicted_word = tokenizer.index_word.get(predicted_id, '<unk>')
+        result.append(predicted_word)
+
+        if predicted_word == '<end>':
+            # print("✅ Fin de génération détectée avec <end>")
+            break
+
+        dec_input = tf.expand_dims([predicted_id], 0)
+
+    attention_plot = attention_plot[:len(result), :]
+    return result, attention_plot
+
+
+def plot_attention(image_path, result, attention_plot):
+    try:
+        import matplotlib.pyplot as plt
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        raise ImportError()
+    temp_image = np.array(Image.open(image_path))
+    fig = plt.figure(figsize=(12, 12))
+    len_result = len(result)
+    fig.suptitle("Prediction: " + " ".join(result), fontsize=14)
+
+    ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, 1)
+    ax.set_title("Original")
+    ax.imshow(temp_image)
+    ax.axis("off")
+
+    for l in range(len_result):
+        temp_att = np.resize(attention_plot[l], (8, 8))
+        ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, l + 2)
+        ax.set_title(result[l])
+        img = ax.imshow(temp_image)
+        ax.imshow(temp_att, cmap='gray', alpha=0.6, extent=img.get_extent())
+        ax.axis("off")
+    plt.tight_layout()
+    plt.show()
+
+def evaluate(image, encoder, decoder, real_caption_tokens=None, max_length=None, image_features_extract_model=None, tokenizer=None):
+    try:
         import numpy as np
         import tensorflow as tf
     except ImportError:
         print("Please install nltk to compute BLEU score.")
         return None, None, None
-    
-    smoothie = SmoothingFunction().method4
-
-    # La forme du vecteur extrait à partir d'InceptionV3 est (64, 2048)
     attention_features_shape = 64
     attention_plot = np.zeros((max_length, attention_features_shape))
 
+    hidden = tf.zeros((1, decoder.units))
 
-    # Charger et encoder l'image
     temp_input = tf.expand_dims(load_image(image)[0], 0)
     img_tensor_val = image_features_extract_model(temp_input)
     img_tensor_val = tf.reshape(img_tensor_val, (img_tensor_val.shape[0], -1, img_tensor_val.shape[3]))
@@ -597,82 +639,57 @@ def captionning_evaluate(image, encoder, decoder, real_caption_tokens=None, max_
     dec_input = tf.expand_dims([tokenizer.word_index['<start>']], 0)
     result = []
 
-    if is_gru:
-        hidden = tf.zeros((1, decoder.units))
-    else:
-        hidden, cell_state = decoder.reset_states(batch_size=1)
-
     for i in range(max_length):
-        if is_gru:
-            predictions, hidden, attention_weights = decoder(dec_input, features, hidden)
-        else:  
-            predictions, hidden, cell_state, attention_weights = decoder(dec_input, features, hidden, cell_state)
-            
+        predictions, hidden, attention_weights = decoder(dec_input, features, hidden, training=False)
         attention_plot[i] = tf.reshape(attention_weights, (-1,)).numpy()
 
-        predicted_id = tf.argmax(predictions[0]).numpy()
+        top_k = tf.nn.top_k(predictions[0], k=5)
+        top_ids = top_k.indices.numpy()
+        top_scores = top_k.values.numpy()
+
+        print(f"\n🔁 Step {i}")
+        for rank, (word_id, score) in enumerate(zip(top_ids, top_scores), start=1):
+            word = tokenizer.index_word.get(word_id, "<unk>")
+            print(f"   {rank}. {word} (id: {word_id}) — score: {score:.4f}")
+
+        predicted_id = top_ids[0]
         predicted_word = tokenizer.index_word.get(predicted_id, '<unk>')
         result.append(predicted_word)
 
         if predicted_word == '<end>':
+            print("✅ Fin de génération détectée avec <end>")
             break
 
         dec_input = tf.expand_dims([predicted_id], 0)
 
     attention_plot = attention_plot[:len(result), :]
+    return result, attention_plot
 
-    # === Calcul BLEU si légende réelle fournie ===
-    bleu_score = None
-    if real_caption_tokens:
-        # Nettoyer <start>, <end> et <pad>
-        ref = [word for word in real_caption_tokens if word not in ['<start>', '<end>', '<pad>']]
-        hyp = [word for word in result if word not in ['<start>', '<end>', '<pad>']]
-        if len(hyp) > 0 and len(ref) > 0:
-            bleu_score = sentence_bleu([ref], hyp, smoothing_function=smoothie)
-            print(f"🟦 BLEU score: {bleu_score:.4f}")
-
-    return result, attention_plot, bleu_score
-
-
-def plot_attention(image, result, attention_plot, bleu_score=None, real_caption=None):
+# Fonction permettant la représentation de l'attention au niveau de l'image
+def plot_attention(image, result, attention_plot):
     import matplotlib.pyplot as plt
     import numpy as np
     from PIL import Image
 
     temp_image = np.array(Image.open(image))
+
     len_result = len(result)
-
     fig = plt.figure(figsize=(12, 12))
-    fig.suptitle("🖼️ Attention Visualization", fontsize=16)
 
-    # ==== Affichage de l'image originale ====
-    ax = fig.add_subplot((len_result + 1) // 2 + 2, 2, 1)
+    # Affiche l'image de base en haut
+    ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, 1)
     ax.set_title("Original Image")
     ax.imshow(temp_image)
     ax.axis("off")
 
-    # ==== Affichage des textes ====
-    text_str = ""
-    if real_caption:
-        text_str += f"📜 Real Caption:\n{' '.join(real_caption)}\n\n"
-    text_str += f"🔮 Predicted:\n{' '.join(result)}\n"
-    if bleu_score is not None:
-        text_str += f"\n🟦 BLEU Score: {bleu_score:.4f}"
-
-    # Affichage dans une cellule vide
-    ax = fig.add_subplot((len_result + 1) // 2 + 2, 2, 2)
-    ax.text(0.5, 0.5, text_str, wrap=True, fontsize=12, ha='center', va='center')
-    ax.axis("off")
-
-    # ==== Affichage des attentions ====
+    # Affiche les attentions
     for l in range(len_result):
         temp_att = np.resize(attention_plot[l], (8, 8))
-        ax = fig.add_subplot((len_result + 1) // 2 + 2, 2, l + 3)
+        ax = fig.add_subplot((len_result + 1) // 2 + 1, 2, l + 2)
         ax.set_title(result[l])
         img = ax.imshow(temp_image)
         ax.imshow(temp_att, cmap='gray', alpha=0.6, extent=img.get_extent())
         ax.axis("off")
 
     plt.tight_layout()
-    plt.subplots_adjust(top=0.9)
     plt.show()

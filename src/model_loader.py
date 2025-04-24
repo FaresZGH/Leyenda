@@ -526,7 +526,7 @@ class ModelLoader:
         return tf.data.Dataset.zip((input_ds.map(lambda x, y: x), target_ds.map(lambda x, y: x)))
 
 
-    def create_captionning_autoencoder(self, init_weigths_path_encoder: str = None, init_weigths_path_decoder: str = None, vocab_size: int = 5000, batch_size: int = 64, is_gru: bool = True):
+    def create_captionning_autoencoder(self, init_weigths_path_encoder: str = None, init_weigths_path_decoder: str = None, vocab_size: int = 5000, is_gru: bool = True):
         try:
             import tensorflow as tf
             from keras.models import Model
@@ -561,25 +561,48 @@ class ModelLoader:
                 attention_weights = tf.nn.softmax(score, axis=1)
                 context_vector = attention_weights * features
                 context_vector = tf.reduce_sum(context_vector, axis=1)
-                return context_vector, attention_weights            
+                return context_vector, attention_weights  
             
-        class RNN_Decoder(Model):
-            def __init__(self, embedding_dim, units, vocab_size):
-                super(RNN_Decoder, self).__init__()
-                self.units = units
-                self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
-                if is_gru :
+
+        if is_gru :          
+            class RNN_Decoder(Model):
+                def __init__(self, embedding_dim, units, vocab_size):
+                    super(RNN_Decoder, self).__init__()
+                    self.units = units
+                    self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
                     self.gru = tf.keras.layers.GRU(
-                    self.units,
-                    return_sequences=True,
-                    return_state=True,
-                    recurrent_initializer='glorot_uniform',
-                    recurrent_activation='sigmoid',  
-                    reset_after=False                 
+                        self.units,
+                        return_sequences=True,
+                        return_state=True,
+                        recurrent_initializer='glorot_uniform',
+                        recurrent_activation='sigmoid',
+                        reset_after=False
                     )
-                else :
-                    # VERSION GPU - LSTM compatible CuDNN
-                    self.lstm = tf.keras.layers.LSTM(
+                    self.fc1 = tf.keras.layers.Dense(self.units)
+                    self.fc2 = tf.keras.layers.Dense(vocab_size)
+                    self.attention = BahdanauAttention(self.units)
+
+                def call(self, x, features, hidden, training=False):
+                    context_vector, attention_weights = self.attention(features, hidden)
+                    x = self.embedding(x)
+                    x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
+                    x.set_shape([None, 1, self.units])
+                    output, state = self.gru(x, initial_state=hidden)
+                    x = self.fc1(output)
+                    x = tf.reshape(x, (tf.shape(x)[0], tf.shape(x)[2]))
+                    x = self.fc2(x)
+                    return x, state, attention_weights
+                
+                def reset_state(self, batch_size):
+                    return tf.zeros((batch_size, self.units))
+        else:    
+            class RNN_Decoder(Model):
+                def __init__(self, embedding_dim, units, vocab_size):
+                    super(RNN_Decoder, self).__init__()
+                    self.units = units
+                    self.embedding = tf.keras.layers.Embedding(vocab_size, embedding_dim)
+                        # VERSION GPU - LSTM compatible CuDNN
+                    self.rnn = tf.keras.layers.LSTM(
                         self.units,
                         return_sequences=True,
                         return_state=True,
@@ -587,34 +610,24 @@ class ModelLoader:
                         recurrent_activation='sigmoid',  # compatibilité GPU
                         unit_forget_bias=True
                     )
-                self.fc1 = tf.keras.layers.Dense(self.units)
-                # self.dropout = tf.keras.layers.Dropout(dropout_rate)
-                self.fc2 = tf.keras.layers.Dense(vocab_size)
-                self.attention = BahdanauAttention(self.units)
+                    self.fc1 = tf.keras.layers.Dense(self.units)
+                    self.dropout = tf.keras.layers.Dropout(0.5)
+                    self.fc2 = tf.keras.layers.Dense(vocab_size)
+                    self.attention = BahdanauAttention(self.units)
 
-            def call(self, x, features, hidden_state, cell_state = None):
-                context_vector, attention_weights = self.attention(features, hidden_state)
-                x = self.embedding(x)
-                x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
-                x.set_shape([None, 1, self.units])  
+                def call(self, x, features, hidden_state, cell_state = None):
+                    context_vector, attention_weights = self.attention(features, hidden_state)
+                    x = self.embedding(x)
+                    x = tf.concat([tf.expand_dims(context_vector, 1), x], axis=-1)
+                    x.set_shape([None, 1, self.units])  
+                    output, h, c = self.rnn(x, initial_state=[hidden_state, cell_state])
+                    x = self.fc1(output)
+                    x = self.dropout(x)
+                    x = tf.reshape(x, (tf.shape(x)[0], tf.shape(x)[2]))
+                    x = self.fc2(x)
 
-                if is_gru :
-                    gru_outputs = self.gru(x, initial_state=hidden_state)
-                    output = gru_outputs[0]
-                    state = gru_outputs[1]
-                else :
-                    output, h, c = self.lstm(x, initial_state=[hidden_state, cell_state])
-
-                x = self.fc1(output)
-                # x = self.dropout(x)
-                x = tf.reshape(x, (tf.shape(x)[0], tf.shape(x)[2]))
-                x = self.fc2(x)
-
-                if is_gru :
-                    return x, state, attention_weights
-                else :
                     return x, h, c, attention_weights
-            if is_gru is False :
+                        
                 def reset_state(self, batch_size):
                     return (
                         tf.zeros((batch_size, self.units)),  # hidden_state
@@ -636,14 +649,24 @@ class ModelLoader:
         optimizer = tf.keras.optimizers.Adam()
 
         if init_weigths_path_encoder and init_weigths_path_decoder :
-            encoder.build(input_shape=(None, 64, 2048))
-            decoder.build(input_shape=[
-                (None, 1),                  
-                (None, 64, embedding_dim),  
-                (None, units)               
-            ])
-            encoder.load_weights(init_weigths_path_encoder, skip_mismatch=True)
-            decoder.load_weights(init_weigths_path_decoder, skip_mismatch=True)
+            if is_gru :
+                _ = encoder(tf.random.uniform((1, 64, 2048)))
+                _ = decoder(tf.random.uniform((1, 1), maxval=vocab_size, dtype=tf.int32),
+                            tf.random.uniform((1, 64, embedding_dim)),
+                            tf.zeros((1, units)))
+                encoder.load_weights(init_weigths_path_encoder)
+                decoder.load_weights(init_weigths_path_decoder)
+            else :
+                encoder.build(input_shape=(None, 64, 2048))
+                decoder.build([
+                    (None, 1),           # dec_input
+                    (None, 64, 256),     # features
+                    (None, 512),         # hidden
+                    (None, 512)          # (si LSTM) cell_state
+                ])
+                encoder.load_weights(init_weigths_path_encoder, skip_mismatch=True)
+                decoder.load_weights(init_weigths_path_decoder, skip_mismatch=True)
+                print("LSTM decoder loaded")
             print("✅ Poids restaurés depuis les fichiers .h5")
 
         return encoder, decoder
